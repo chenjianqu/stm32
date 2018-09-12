@@ -1,13 +1,11 @@
-#ifndef __OV2640_H
-#define __OV2640_H
-
-#include "stm32f4xx_it.h"
-#include "sys.h"
-
+#ifndef _OV2640_H
+#define _OV2640_H
+#include "stm32f4xx_it.h"   
+#include "sccb.h"
+ 
 #define OV2640_PWDN  	PGout(9)			//POWER DOWN控制信号 
 #define OV2640_RST  	PGout(15)			//复位控制信号 
-
-
+////////////////////////////////////////////////////////////////////////////////// 
 #define OV2640_MID				0X7FA2
 #define OV2640_PID				0X2642
  
@@ -97,7 +95,9 @@
 #define OV2640_SENSOR_HISTO_HIGH 0x62
 
 
- 
+								
+	    				 
+u8 OV2640_Init(void);  
 void OV2640_JPEG_Mode(void);
 void OV2640_RGB565_Mode(void);
 void OV2640_Auto_Exposure(u8 level);
@@ -112,9 +112,25 @@ u8 OV2640_OutSize_Set(u16 width,u16 height);
 u8 OV2640_ImageWin_Set(u16 offx,u16 offy,u16 width,u16 height);
 u8 OV2640_ImageSize_Set(u16 width,u16 height);
 
-
-
-u8 initOV2640(void);
-
 #endif
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 

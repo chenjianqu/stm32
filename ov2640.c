@@ -1,104 +1,38 @@
 #include "ov2640.h"
-#include "sccb.h"
-#include "ov2640cofg.h"
-
-
-/*简介：
-OV2640是OmniVision公司生产的一颗1/4寸的CMOS UXGA（1632*1232）图像传感器。该传感器体积小、工作电压低，提供单片UXGA摄像头和影像处理器的所有功能。通过SCCB 总线控制，
-可以输出整帧、子采样、缩放和取窗口等方式的各种分辨率8/10位影像数据。UXGA最高15帧/秒（SVGA可达30帧，CIF可达60帧）。用户可以完全控制图像质量、数据格式和传输方式。所
-有图像处理功能过程包括伽玛曲线、白平衡、对比度、色度等都可以通过SCCB接口编程。
-*/
-
-/*特点：
-①高灵敏度、低电压适合嵌入式应用。
-②标准的SCCB接口，兼容IIC接口。 
-③支持RawRGB、RGB(RGB565/RGB555)、GRB422、YUV(422/420)和YCbCr（422）输出格式。
-④支持UXGA、SXGA、SVGA以及按比例缩小到从SXGA到40*30的任何尺寸 。
-⑤支持自动曝光控制、自动增益控制、自动白平衡、自动消除灯光条纹、自动黑电平校准等自动控制功能。同时支持色饱和度、色相、伽马、锐度等设置。 
-⑥支持图像缩放和闪光灯
-⑦支持图像压缩，即可输出JPEG图像数据
-*/
-
-/*
-基本概念：
-UXGA，即分辨率位1600*1200的输出格式，类似的还有：SXGA(1280*1024)、XVGA(1280*960)、WXGA(1280*800)、XGA(1024*768)、SVGA(800*600)、VGA(640*480)、CIF(352*288)和QQVGA(160*120)等。
-PCLK，即像素时钟，一个PCLK时钟，输出一个(或半个)像素。
-VSYNC，即帧同步信号。
-HREF /HSYNC，即行同步信号。
-
-OV2640的图像数据输出（通过Y[9:0]，不过我们只用8位数据）就是在PCLK，VSYNC和HREF/ HSYNC的控制下进行的
-*/
-
-/*时钟信号：
-图像数据在HREF为高的时候输出，当HREF变高后，每一个PCLK时钟，输出一个字节数据。比如我们采用UXGA时序，RGB565格式输出，每2个字节组成一个像素的颜色（低字节在前，高字节在后），
-这样每行输出总共有1600*2个PCLK周期，输出1600*2个字节
-PCLK是控制每行像素数据的时钟，HREF信号为高时有效
-VSYNC是控制每帧（1200行）的时钟信号
-*/
-
-/*传感器窗口设置（OV2640_Window_Set）：
-传感器窗口设置允许用户设置整个传感器区域（1632*1220）的感兴趣部分，也就是在传感器里面开窗，开窗范围从2*2~1632*1220都可以设置，不过要求这个窗口必须大于等于随后设置的图像尺寸。
-传感器窗口设置，通过：0X03/0X19/0X1A/0X07/0X17/0X18等寄存器设置，寄存器定义请看OV2640_DS(1.6).pdf这个文档（下同）
-*/
-
-/*图像尺寸设置（OV2640_ImageSize_Set）：
-图像尺寸设置，也就是DSP输出（最终输出到LCD的）图像的最大尺寸，该尺寸要小于等于前面我们传感器窗口设置所设定的窗口尺寸。图像尺寸通过：0XC0/0XC1/0X8C等寄存器设置。
-*/
-/*图像窗口设置（OV2640_ImageWin_Set）：
-图像窗口设置其实和前面的传感器窗口设置类似，只是这个窗口是在我们前面设置的图像尺寸里面，再一次设置窗口大小，该窗口必须小于等于前面设置的图像尺寸。该窗口设置后的图像范围，将用
-于输出到外部。图像窗口设置通过：0X51/0X52/0X53/0X54/0X55/0X57等寄存器设置。
-*/
-/*图像输出大小设置（OV2640_OutSize_Set）：
-图像输出大小设置，控制最终输出到外部的图像尺寸。该设置将图像窗口设置所决定的窗口大小，通过内部DSP处理，缩放成我们输出到外部的图像大小。该设置将会对图像进行缩放处理，如果设置的
-图像输出大小不等于图像窗口设置图像大小，那么图像就会被缩放处理，只有这两者设置一样大的时候，输出比例才是1：1的。图像输出大小通过：0X5A/0X5B/0X5C等寄存器设置。
-
-*/
-
-
-/*根据官方例程稍作修改而来*/
-
-
-
+#include "ov2640cfg.h"
+#include "sccb.h"	
+ 
+  
 //初始化OV2640 
 //配置完以后,默认输出是1600*1200尺寸的图片!! 
 //返回值:0,成功
 //    其他,错误代码
-
-
-/******************************摄像头模块的初始化**************************/
-
-u8 initOV2640(void)
+u8 OV2640_Init(void)
 { 
-	/*摄像头模块的初始化流程：初始化IO口->上电并复位->读取传感器ID(非必需)->执行初始化序列->完成初始化*/
 	u16 i=0;
 	u16 reg;
-	//设置IO     	   
-
-	initGPIO(GPIOG,GPIO_Pin_9,	GPIO_Mode_OUT,AF_DISABLE,GPIO_Speed_50MHz,GPIO_OType_PP,GPIO_PuPd_UP);//PWDN 上电控制
-	initGPIO(GPIOG,GPIO_Pin_15,	GPIO_Mode_OUT,AF_DISABLE,GPIO_Speed_50MHz,GPIO_OType_PP,GPIO_PuPd_UP);//RESET复位控制
 	
-	//上电，等待10ms
+	initGPIO(GPIOG,GPIO_Pin_9,GPIO_Mode_OUT,AF_DISABLE,GPIO_Speed_50MHz,GPIO_OType_PP,GPIO_PuPd_UP);
+	initGPIO(GPIOG,GPIO_Pin_15,GPIO_Mode_OUT,AF_DISABLE,GPIO_Speed_50MHz,GPIO_OType_PP,GPIO_PuPd_UP);
+ 
  	OV2640_PWDN=0;	//POWER ON
 	delay_ms(10);
-	//硬件复位
 	OV2640_RST=0;	//复位OV2640
 	delay_ms(10);
 	OV2640_RST=1;	//结束复位 
-	
-  SCCB_Init();//初始化SCCB 的IO口	 
-	
+  SCCB_Init();        		//初始化SCCB 的IO口	 
 	SCCB_WR_Reg(OV2640_DSP_RA_DLMT, 0x01);	//操作sensor寄存器
  	SCCB_WR_Reg(OV2640_SENSOR_COM7, 0x80);	//软复位OV2640
 	delay_ms(50); 
-	
-	//读取寄存器id
 	reg=SCCB_RD_Reg(OV2640_SENSOR_MIDH);	//读取厂家ID 高八位
 	reg<<=8;
 	reg|=SCCB_RD_Reg(OV2640_SENSOR_MIDL);	//读取厂家ID 低八位
-	
 	if(reg!=OV2640_MID)
 	{
-		printf("MID:%d\r\n",reg);
+		//printf("MID:%d\r\n",reg);
+		USART_SendString(USART1,"MID:",4);
+		USART_SendNumber(USART1,reg);
+		USART_SendChar(USART1,'\n');
 		return 1;
 	}
 	reg=SCCB_RD_Reg(OV2640_SENSOR_PIDH);	//读取厂家ID 高八位
@@ -106,42 +40,56 @@ u8 initOV2640(void)
 	reg|=SCCB_RD_Reg(OV2640_SENSOR_PIDL);	//读取厂家ID 低八位
 	if(reg!=OV2640_PID)
 	{
-		printf("HID:%d\r\n",reg);
+		//printf("HID:%d\r\n",reg);
+		USART_SendString(USART1,"HID:",4);
+		USART_SendNumber(USART1,reg);
+		USART_SendChar(USART1,'\n');
 		return 2;
 	}   
-	
- 	//执行初始化序列  初始化 OV2640,采用UXGA分辨率(1600*1200)  根据官方给出的模板稍作修改得的
+ 	//初始化 OV2640,采用SXGA分辨率(1600*1200)  
 	for(i=0;i<sizeof(ov2640_sxga_init_reg_tbl)/2;i++)
-	   SCCB_WR_Reg(ov2640_sxga_init_re g_tbl[i][0],ov2640_sxga_init_reg_tbl[i][1]);
-	
-	return 0x00; 	//ok
+	{
+	   	SCCB_WR_Reg(ov2640_sxga_init_reg_tbl[i][0],ov2640_sxga_init_reg_tbl[i][1]);
+ 	} 
+  	return 0x00; 	//ok
 } 
 
 
-//OV2640切换为JPEG模式（把得到的数据流保存为jpeg文件就成为jpeg图片了）
+
+
+
+
+//OV2640切换为JPEG模式
 void OV2640_JPEG_Mode(void) 
 {
 	u16 i=0;
 	//设置:YUV422格式
 	for(i=0;i<(sizeof(ov2640_yuv422_reg_tbl)/2);i++)
+	{
 		SCCB_WR_Reg(ov2640_yuv422_reg_tbl[i][0],ov2640_yuv422_reg_tbl[i][1]); 
+	} 
 	
 	//设置:输出JPEG数据
 	for(i=0;i<(sizeof(ov2640_jpeg_reg_tbl)/2);i++)
+	{
 		SCCB_WR_Reg(ov2640_jpeg_reg_tbl[i][0],ov2640_jpeg_reg_tbl[i][1]);  
+	}  
 }
 
 
 
-//OV2640切换为RGB565模式（lcd显示的格式就是rgb565，方便用于lcd预览）
+
+//OV2640切换为RGB565模式
 void OV2640_RGB565_Mode(void) 
 {
 	u16 i=0;
-	
 	//设置:RGB565输出
 	for(i=0;i<(sizeof(ov2640_rgb565_reg_tbl)/2);i++)
+	{
 		SCCB_WR_Reg(ov2640_rgb565_reg_tbl[i][0],ov2640_rgb565_reg_tbl[i][1]); 
+	} 
 } 
+
 
 
 
@@ -181,6 +129,7 @@ const static u8 OV2640_AUTOEXPOSURE_LEVEL[5][8]=
 }; 
 
 
+
 //OV2640自动曝光等级设置
 //level:0~4
 void OV2640_Auto_Exposure(u8 level)
@@ -188,10 +137,10 @@ void OV2640_Auto_Exposure(u8 level)
 	u8 i;
 	u8 *p=(u8*)OV2640_AUTOEXPOSURE_LEVEL[level];
 	for(i=0;i<4;i++)
+	{ 
 		SCCB_WR_Reg(p[i*2],p[i*2+1]); 
+	} 
 }  
-
-
 
 
 
@@ -237,6 +186,7 @@ void OV2640_Light_Mode(u8 mode)
 
 
 
+
 //色度设置
 //0:-2
 //1:-1
@@ -253,7 +203,6 @@ void OV2640_Color_Saturation(u8 sat)
 	SCCB_WR_Reg(0X7D,reg7dval);			
 	SCCB_WR_Reg(0X7D,reg7dval); 		
 }
-
 
 
 
@@ -370,6 +319,7 @@ void OV2640_Special_Effects(u8 eft)
 
 
 
+
 //彩条测试
 //sw:0,关闭彩条
 //   1,开启彩条(注意OV2640的彩条是叠加在图像上面的)
@@ -416,6 +366,7 @@ void OV2640_Window_Set(u16 sx,u16 sy,u16 width,u16 height)
 
 
 
+
 //设置图像输出大小
 //OV2640输出图像的大小(分辨率),完全由改函数确定
 //width,height:宽度(对应:horizontal)和高度(对应:vertical),width和height必须是4的倍数
@@ -440,7 +391,6 @@ u8 OV2640_OutSize_Set(u16 width,u16 height)
 	SCCB_WR_Reg(0XE0,0X00);	
 	return 0;
 }
-
 
 
 
@@ -477,7 +427,11 @@ u8 OV2640_ImageWin_Set(u16 offx,u16 offy,u16 width,u16 height)
 	SCCB_WR_Reg(0X57,(hsize>>2)&0X80);	//设置H_SIZE/V_SIZE/OFFX,OFFY的高位
 	SCCB_WR_Reg(0XE0,0X00);	
 	return 0;
-}
+} 
+
+
+
+
 
 
 
@@ -501,3 +455,6 @@ u8 OV2640_ImageSize_Set(u16 width,u16 height)
 	SCCB_WR_Reg(0XE0,0X00);				 
 	return 0;
 }
+
+
+
